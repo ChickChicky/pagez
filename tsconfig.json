@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "ES2020",
+
+    /* Modules */
+    "module": "CommonJS",
+  
+    /* Emit */
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "newLine": "lf",
+
+    /* Interop Constraints */
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Type Checking */
+    "strict": true,
+    
+    /* Completeness */
+    "skipLibCheck": true
+  }
+}

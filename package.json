@@ -1,0 +1,18 @@
+{
+    "name": "pagez",
+    "version": "1.0.0",
+    "description": "A library to manage static HTTP pages",
+    "main": "index.js",
+    "scripts": {
+        "install": "npx tsc"
+    },
+    "devDependencies": {
+        "@types/html-minifier": "^4.0.5",
+        "@types/uglify-js": "^3.17.5",
+        "typescript": "^5.4.5"
+    },
+    "dependencies": {
+        "html-minifier": "^4.0.0",
+        "uglify-js": "^3.17.4"
+    }
+}
