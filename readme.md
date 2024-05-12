@@ -21,9 +21,9 @@ const pagez = require('pagez');
 
 const pages = pagez.parse(pagez.Source.fromFile('./pages.np'));
 
+pages.use(pagez.builtinLib);
+
 pages.build({
-    decorators: {...pagez.builtinDecorators},
-    macros: {...pagez.builtinMacros},
     sourcePath: 'source',
     outputPath: 'dist'
 });

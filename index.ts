@@ -29,25 +29,24 @@ type Namespace = {
 };
 
 type DecImpl = (page:Page,dec:Dec) => void;
+type MacImpl = (page:Page,dec:Dec) => Dec[];
 
 type BuildParams = {
-    decorators: {[name:string]: DecImpl},
-    macros: {[name:string]: (page:Page,dec:Dec) => Dec[]},
     paths?: {[namespace:string]: string},
     sourcePath: string,
     defaultPath?: string,
     outputPath?: string,
 };
 
+type Lib = {
+    decorators?: {[name:string]: DecImpl},
+    macros?: {[name:string]: MacImpl}
+};
+
 enum ParseState {
     Top,
     Namespace,
     Page,
-};
-
-enum DecState {
-    Pending,
-    Group,
 };
 
 export class Source {
@@ -116,20 +115,34 @@ class EOF extends Token {
 }
 
 export class Pages {
-    namespaces: Namespace[];
+    public namespaces: Namespace[];
+    private decorators: {[name:string]: DecImpl};
+    private macros: {[name:string]: MacImpl};
 
     constructor (namespaces: Namespace[]) {
         this.namespaces = namespaces;
+        this.decorators = {};
+        this.macros = {};
+    }
+    
+    /**
+     * Adds a macro/decorator library to the pages builder
+     */
+    public use( lib: Lib ) {
+        if (lib.decorators)
+            Object.assign(this.decorators,lib.decorators);
+        if (lib.macros)
+            Object.assign(this.macros,lib.macros);
     }
 
     /** 
      * Builds the pages, allowing to use *getPage*
      */
-    build( params: BuildParams ) {
+    public build( params: BuildParams ) {
         for (const namespace of this.namespaces) {
             for (const page of namespace.pages) {
                 for (const macro of page.decorators.filter(dec=>dec.props.__mac)) {
-                    const impl = params.macros[macro.name];
+                    const impl = this.macros[macro.name];
                     if (!impl)
                         throw buildError(macro.loc,`Unknown macro \`${macro.name}\``);
                     const decs = impl(page,macro);
@@ -150,7 +163,7 @@ export class Pages {
                     }
                 }
                 for (const dec of page.decorators) {
-                    const impl = params.decorators[dec.name];
+                    const impl = this.decorators[dec.name];
                     if (!impl)
                         throw buildError(dec.loc,`Unknown decorator \`${dec.name}\``);
                     impl(page,dec);
@@ -176,8 +189,8 @@ export class Pages {
                     if (!fs.existsSync(p))
                         throw buildError(page.loc,`File \`${p}\` could not be found`);
                     let body = fs.readFileSync(p,'utf-8');
-                    if (page.props.__process)
-                        body = page.props.__process(body);
+                    for (const proc of page.props.__process || [])
+                        body = proc(body);
                     fs.writeFileSync(path.join(dest,page.path),body,'utf-8');
                     let root: string = namespace.props.root || '/';
                     page.name = (root.replace(/(^\/)|(\/$)/g,'')+'/'+page.name.replace(/(^\/)|(\/$)/g,'')).replace(/(^\/)/g,'');
@@ -190,7 +203,7 @@ export class Pages {
     /**
      * Attempts to retreive a page from its path (best used afer *build*)
      */
-    getPage( path: string ) : {body:string,page:Page}|null {
+    public getPage( path: string ) : {body:string,page:Page}|null {
         path = path.replace(/(^\/)|(\/$)/g,'');
         for (const namespace of this.namespaces) {
             for (const page of namespace.pages) {
@@ -317,8 +330,8 @@ export function parse( source: Source ) : Pages {
     let page: Page|null = null;
 
     let decs: Dec[] = [];
+    let groupDecs: Dec[] = [];
     let globDecs: Dec[] = [];
-    let decState: DecState = DecState.Pending;
 
     for (let i = 0; i < tokens.length; i++) {
         const token: Token = tokens[i];
@@ -353,9 +366,8 @@ export function parse( source: Source ) : Pages {
         else if (state == ParseState.Namespace) {
             if (!namespace) throw parseError(token.loc,'<INVALID STATE>');
             if (token.val == '}') {
-                if (decState == DecState.Group) {
-                    decState = DecState.Pending;
-                    decs = [];
+                if (groupDecs.length) {
+                    groupDecs = [];
                 } else {
                     state = ParseState.Top;
                     namespace = null;
@@ -380,16 +392,13 @@ export function parse( source: Source ) : Pages {
                 page = {
                     name,
                     loc: token.loc,
-                    decorators: [...decs,...globDecs],
+                    decorators: [...globDecs,...groupDecs,...decs,],
                     props: {},
                 };
                 namespace.pages.push(page);
-                if (decState == DecState.Pending)
-                    decs = [];
+                decs = [];
             }
             else if (token.val == '%') {
-                if (decState == DecState.Group)
-                    throw parseError(tokens[i].loc,'Decorators are not allowed within a group');
                 i++;
                 let not = false;
                 let mac = false;
@@ -443,8 +452,11 @@ export function parse( source: Source ) : Pages {
                     }
                 }
             }
-            else if (token.val == '{' && decs.length) {
-                decState = DecState.Group;
+            else if (token.val == '{') {
+                if (!decs.length)
+                    throw parseError(tokens[i].loc,'Expected decorators before group');
+                groupDecs = decs;
+                decs = [];
             }
             else if (token.isNamespace()) {
                 throw parseError(token.loc,'Unexpected namespace declaration');
@@ -494,52 +506,53 @@ export function parse( source: Source ) : Pages {
     return new Pages(namespaces);
 }
 
-export const builtinDecorators: {[name:string]: DecImpl} = {
-    'kind' : (page,dec) => {
-        if (dec.props.kind || dec.args[0]) {
-            (page.props.__headers ||= {})['Content-Type'] = dec.props.kind || dec.args[0];
-        } else {
-            let kind: string|null = null;
-
-            if (page.name.endsWith('.js'))
-                kind = 'application/javascript';
-            else if (page.name.endsWith('.css'))
-                kind = 'text/css';
-            else if (page.name.endsWith('.html'))
-                kind = 'text/html';
-
-            if (kind)
-                (page.props.__headers ||= {})['Content-Type'] = kind;
+export const builtinLib : Lib = {
+    decorators : {
+        'kind' : (page,dec) => {
+            if (dec.props.kind || dec.args[0]) {
+                (page.props.__headers ||= {})['Content-Type'] = dec.props.kind || dec.args[0];
+            } else {
+                let kind: string|null = null;
+    
+                if (page.name.endsWith('.js'))
+                    kind = 'application/javascript';
+                else if (page.name.endsWith('.css'))
+                    kind = 'text/css';
+                else if (page.name.endsWith('.html'))
+                    kind = 'text/html';
+    
+                if (kind)
+                    (page.props.__headers ||= {})['Content-Type'] = kind;
+            }
+        },
+        'min' : (page,dec) => {
+            if (!page.path) return;
+            if (page.path.endsWith('.js'))
+                (page.props.__process ||= []).push((body:string) => {
+                    const min = minifyjs(body,{});
+                    return min.code;
+                });
+            if (page.path.endsWith('.html'))
+                (page.props.__process ||= []).push((body:string) => {
+                    const min = minifyhtml(
+                        Buffer.from(body),
+                        {
+                            minify_css: true,
+                            minify_js: true,
+                            keep_comments: false,
+                            do_not_minify_doctype: true
+                        }
+                    ).toString('utf-8');
+                    return min;
+                });
         }
     },
-    'min' : (page,dec) => {
-        if (!page.path) return;
-        if (page.path.endsWith('.js'))
-            page.props.__process = (body:string) => {
-                const min = minifyjs(body,{});
-                return min.code;
-            };
-        if (page.path.endsWith('.html'))
-            page.props.__process = (body:string) => {
-                const min = minifyhtml(
-                    Buffer.from(body),
-                    {
-                        minify_css: true,
-                        minify_js: true,
-                        keep_comments: false,
-                        do_not_minify_doctype: true
-                    }
-                ).toString('utf-8');
-                return min;
-            };
-    }
-};
-
-export const builtinMacros: {[name:string]: (page:Page,dec:Dec) => Dec[]} = {
-    'auto' : (page,dec) => {
-        return [
-            { name: 'kind', args: [], props: {}, loc: dec.loc },
-            { name: 'min', args: [], props: {}, loc: dec.loc }
-        ];
+    macros : {
+        'auto' : (page,dec) => {
+            return [
+                { name: 'kind', args: [], props: {}, loc: dec.loc },
+                { name: 'min', args: [], props: {}, loc: dec.loc }
+            ];
+        }
     }
 };
