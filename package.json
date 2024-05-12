@@ -1,6 +1,6 @@
 {
     "name": "pagez",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A library to manage static HTTP pages",
     "main": "index.js",
     "scripts": {
@@ -12,7 +12,7 @@
         "typescript": "^5.4.5"
     },
     "dependencies": {
-        "html-minifier": "^4.0.0",
+        "@minify-html/node": "^0.15.0",
         "uglify-js": "^3.17.4"
     }
 }

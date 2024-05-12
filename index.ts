@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
 import { minify as minifyjs } from "uglify-js";
-import { minify as minifyhtml } from "html-minifier";
+import { minify as minifyhtml } from "@minify-html/node";
 
 type Props = {[name:string]:any};
 
@@ -521,19 +521,15 @@ export const builtinDecorators: {[name:string]: DecImpl} = {
             };
         if (page.path.endsWith('.html'))
             page.props.__process = (body:string) => {
-                const min = minifyhtml(body,{
-                    collapseWhitespace: true,
-                    collapseInlineTagWhitespace: true,
-                    minifyCSS: true,
-                    minifyJS: true,
-                    removeComments: true,
-                    removeEmptyAttributes: true,
-                    removeRedundantAttributes: true,
-                    decodeEntities: true,
-                    keepClosingSlash: false,
-                    removeScriptTypeAttributes: true,
-                    removeStyleLinkTypeAttributes: true
-                });
+                const min = minifyhtml(
+                    Buffer.from(body),
+                    {
+                        minify_css: true,
+                        minify_js: true,
+                        keep_comments: false,
+                        do_not_minify_doctype: true
+                    }
+                ).toString('utf-8');
                 return min;
             };
     }
