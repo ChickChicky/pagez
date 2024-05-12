@@ -49,7 +49,7 @@ enum ParseState {
     Page,
 };
 
-export class Source {
+class Source {
     name: string;
     body: string;
 
@@ -115,30 +115,233 @@ class EOF extends Token {
 }
 
 export class Pages {
-    public namespaces: Namespace[];
+    private namespaces: Namespace[];
     private decorators: {[name:string]: DecImpl};
     private macros: {[name:string]: MacImpl};
 
-    constructor (namespaces: Namespace[]) {
-        this.namespaces = namespaces;
+    constructor () {
+        this.namespaces = [];
         this.decorators = {};
         this.macros = {};
+    }
+
+    /**
+     * Parses and adds a page declaration
+     */
+    public add( source: Source ) : this {
+        const tokens: Token[] = tokenize(source);
+    
+        let state: ParseState = ParseState.Top;
+        
+        let namespace: Namespace|null = null;
+        let page: Page|null = null;
+    
+        let decs: Dec[] = [];
+        let groupDecs: Dec[] = [];
+        let globDecs: Dec[] = [];
+    
+        for (let i = 0; i < tokens.length; i++) {
+            const token: Token = tokens[i];
+            
+            if (state == ParseState.Top) {
+                if (token.isNamespace()) {
+                    const name: string = token.val.slice(1,-1);
+                    if (!name.length) {
+                        throw parseError(token.loc,'Missing namespace name');
+                    }
+                    if (tokens[i+1].val != '{') {
+                        throw parseError(tokens[i+1].loc,'Expected `{`');
+                    }
+                    i++;
+                    state = ParseState.Namespace;
+                    namespace = {
+                        name,
+                        loc: token.loc,
+                        pages: [],
+                        props: {}
+                    };
+                    this.namespaces.push(namespace);
+                } 
+                else if (token instanceof EOF) {
+                    break;
+                } 
+                else {
+                    throw parseError(token.loc,'Expected a namespace declaration',token.isIdentifier()?`Maybe you meant \`(${token.val})\`?`:'');
+                }
+            }
+    
+            else if (state == ParseState.Namespace) {
+                if (!namespace) throw parseError(token.loc,'<INVALID STATE>');
+                if (token.val == '}') {
+                    if (groupDecs.length) {
+                        groupDecs = [];
+                    } else {
+                        state = ParseState.Top;
+                        namespace = null;
+                    }
+                }
+                else if (token.isIdentifier()) {
+                    if (tokens[i+1].val != '=') {
+                        throw parseError(tokens[i+1].loc,'Expected `=`');
+                    }
+                    const name: string = token.val;
+                    const value: any = resolveValue(tokens[i+2]);
+                    namespace.props[name] = value;
+                    i += 2;
+                }
+                else if (token.isPage()) {
+                    const name = token.val.slice(1,-1);
+                    if (tokens[i+1].val != '{') {
+                        throw parseError(tokens[i+1].loc,'Expected `{`');
+                    }
+                    i++;
+                    state = ParseState.Page;
+                    page = {
+                        name,
+                        loc: token.loc,
+                        decorators: [...globDecs,...groupDecs,...decs,],
+                        props: {},
+                    };
+                    namespace.pages.push(page);
+                    decs = [];
+                }
+                else if (token.val == '%') {
+                    i++;
+                    let not = false;
+                    let mac = false;
+                    let glb = false;
+                    if (tokens[i].val == '%') {
+                        glb = true;
+                        i++;
+                    }
+                    if (tokens[i].val == '-') {
+                        not = true;
+                        i++;
+                    }
+                    if (tokens[i].val == '!') {
+                        mac = true;
+                        i++;
+                    }
+                    if (!tokens[i].isIdentifier()) {
+                        throw parseError(tokens[i].loc,'Expected an identifier');
+                    }
+                    const name: string = tokens[i].val;
+                    const dec: Dec = {
+                        name,
+                        loc: token.loc,
+                        args: [],
+                        props: {}
+                    };
+                    if (glb)
+                        globDecs.push(dec);
+                    else
+                        decs.push(dec);
+                    if (not) dec.props.__not = true;
+                    if (mac) dec.props.__mac = true;
+                    if (glb) dec.props.__glb = true;
+                    if (tokens[i+1].val == '<') {
+                        if (not)
+                            throw parseError(tokens[i+1].loc,'Can\'t add parameters to cancelled decorator');
+                        i++;
+                        while (tokens[++i].val != '>') {
+                            if (tokens[i].isIdentifier()) {
+                                const name = tokens[i++].val;
+                                if (tokens[i++].val != '=') {
+                                    throw parseError(tokens[i-1].loc,'Expected `=`');
+                                }
+                                const value = resolveValue(tokens[i]);
+                                dec.props[name] = value;
+                            }
+                            else {
+                                const value = resolveValue(tokens[i]);
+                                dec.args.push(value);
+                            }
+                        }
+                    }
+                }
+                else if (token.val == '{') {
+                    if (!decs.length)
+                        throw parseError(tokens[i].loc,'Expected decorators before group');
+                    groupDecs = decs;
+                    decs = [];
+                }
+                else if (token.isNamespace()) {
+                    throw parseError(token.loc,'Unexpected namespace declaration');
+                }
+                else if (token instanceof EOF) {
+                    throw parseError(token.loc,'Unexpected EOF');
+                } 
+                else {
+                    throw parseError(token.loc,'Unexpected token');
+                }
+            }
+    
+            else if (state == ParseState.Page) {
+                if (!page) throw parseError(token.loc,'<INVALID STATE>');
+                if (token.val == '}') {
+                    state = ParseState.Namespace;
+                    page = null;
+                }
+                else if (token.isIdentifier()) {
+                    if (tokens[i+1].val != '=') {
+                        throw parseError(tokens[i+1].loc,'Expected `=`');
+                    }
+                    const name = token.val;
+                    const value = resolveValue(tokens[i+2]);
+                    page.props[name] = value;
+                    i += 2;
+                }
+                else if (token.val == '@') {
+                    i++;
+                    if (!tokens[i].isString()) {
+                        throw parseError(tokens[i].loc,'Expected a string for page path');
+                    }
+                    page.path = tokens[i].val.slice(1,-1);
+                }
+                else if (token.isNamespace()) {
+                    throw parseError(token.loc,'Unexpected namespace declaration');
+                }
+                else if (token.isPage()) {
+                    throw parseError(token.loc,'Unexpected page declaration');
+                }
+                else {
+                    throw parseError(token.loc,'Unexpected token');
+                }
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Adds a page declaration from a file
+     */
+    public addFile( path: string ) : this {
+        return this.add(Source.fromFile(path));
+    }
+
+    /**
+     * Adds a page declaration from a string input
+     */
+    public addText( text: string, name?: string ) : this {
+        return this.add(new Source(name||'(input)',text));
     }
     
     /**
      * Adds a macro/decorator library to the pages builder
      */
-    public use( lib: Lib ) {
+    public use( lib: Lib ) : this {
         if (lib.decorators)
             Object.assign(this.decorators,lib.decorators);
         if (lib.macros)
             Object.assign(this.macros,lib.macros);
+        return this;
     }
 
     /** 
      * Builds the pages, allowing to use *getPage*
      */
-    public build( params: BuildParams ) {
+    public build( params: BuildParams ) : this {
         for (const namespace of this.namespaces) {
             for (const page of namespace.pages) {
                 for (const macro of page.decorators.filter(dec=>dec.props.__mac)) {
@@ -171,6 +374,7 @@ export class Pages {
                 page.decorators = [];
             }
         }
+        
         if (params.outputPath) {
             if (!fs.existsSync(params.outputPath))
                 fs.mkdirSync(params.outputPath);
@@ -198,6 +402,8 @@ export class Pages {
                 }
             }
         }
+
+        return this;
     }
 
     /**
@@ -318,192 +524,6 @@ function tokenize( source: Source ) : Token[] {
     tokens.push(new EOF(col,row,source));
 
     return tokens;
-}
-
-export function parse( source: Source ) : Pages {
-    const namespaces: Namespace[] = [];
-    const tokens: Token[] = tokenize(source);
-
-    let state: ParseState = ParseState.Top;
-    
-    let namespace: Namespace|null = null;
-    let page: Page|null = null;
-
-    let decs: Dec[] = [];
-    let groupDecs: Dec[] = [];
-    let globDecs: Dec[] = [];
-
-    for (let i = 0; i < tokens.length; i++) {
-        const token: Token = tokens[i];
-        
-        if (state == ParseState.Top) {
-            if (token.isNamespace()) {
-                const name: string = token.val.slice(1,-1);
-                if (!name.length) {
-                    throw parseError(token.loc,'Missing namespace name');
-                }
-                if (tokens[i+1].val != '{') {
-                    throw parseError(tokens[i+1].loc,'Expected `{`');
-                }
-                i++;
-                state = ParseState.Namespace;
-                namespace = {
-                    name,
-                    loc: token.loc,
-                    pages: [],
-                    props: {}
-                };
-                namespaces.push(namespace);
-            } 
-            else if (token instanceof EOF) {
-                break;
-            } 
-            else {
-                throw parseError(token.loc,'Expected a namespace declaration',token.isIdentifier()?`Maybe you meant \`(${token.val})\`?`:'');
-            }
-        }
-
-        else if (state == ParseState.Namespace) {
-            if (!namespace) throw parseError(token.loc,'<INVALID STATE>');
-            if (token.val == '}') {
-                if (groupDecs.length) {
-                    groupDecs = [];
-                } else {
-                    state = ParseState.Top;
-                    namespace = null;
-                }
-            }
-            else if (token.isIdentifier()) {
-                if (tokens[i+1].val != '=') {
-                    throw parseError(tokens[i+1].loc,'Expected `=`');
-                }
-                const name: string = token.val;
-                const value: any = resolveValue(tokens[i+2]);
-                namespace.props[name] = value;
-                i += 2;
-            }
-            else if (token.isPage()) {
-                const name = token.val.slice(1,-1);
-                if (tokens[i+1].val != '{') {
-                    throw parseError(tokens[i+1].loc,'Expected `{`');
-                }
-                i++;
-                state = ParseState.Page;
-                page = {
-                    name,
-                    loc: token.loc,
-                    decorators: [...globDecs,...groupDecs,...decs,],
-                    props: {},
-                };
-                namespace.pages.push(page);
-                decs = [];
-            }
-            else if (token.val == '%') {
-                i++;
-                let not = false;
-                let mac = false;
-                let glb = false;
-                if (tokens[i].val == '%') {
-                    glb = true;
-                    i++;
-                }
-                if (tokens[i].val == '-') {
-                    not = true;
-                    i++;
-                }
-                if (tokens[i].val == '!') {
-                    mac = true;
-                    i++;
-                }
-                if (!tokens[i].isIdentifier()) {
-                    throw parseError(tokens[i].loc,'Expected an identifier');
-                }
-                const name: string = tokens[i].val;
-                const dec: Dec = {
-                    name,
-                    loc: token.loc,
-                    args: [],
-                    props: {}
-                };
-                if (glb)
-                    globDecs.push(dec);
-                else
-                    decs.push(dec);
-                if (not) dec.props.__not = true;
-                if (mac) dec.props.__mac = true;
-                if (glb) dec.props.__glb = true;
-                if (tokens[i+1].val == '<') {
-                    if (not)
-                        throw parseError(tokens[i+1].loc,'Can\'t add parameters to cancelled decorator');
-                    i++;
-                    while (tokens[++i].val != '>') {
-                        if (tokens[i].isIdentifier()) {
-                            const name = tokens[i++].val;
-                            if (tokens[i++].val != '=') {
-                                throw parseError(tokens[i-1].loc,'Expected `=`');
-                            }
-                            const value = resolveValue(tokens[i]);
-                            dec.props[name] = value;
-                        }
-                        else {
-                            const value = resolveValue(tokens[i]);
-                            dec.args.push(value);
-                        }
-                    }
-                }
-            }
-            else if (token.val == '{') {
-                if (!decs.length)
-                    throw parseError(tokens[i].loc,'Expected decorators before group');
-                groupDecs = decs;
-                decs = [];
-            }
-            else if (token.isNamespace()) {
-                throw parseError(token.loc,'Unexpected namespace declaration');
-            }
-            else if (token instanceof EOF) {
-                throw parseError(token.loc,'Unexpected EOF');
-            } 
-            else {
-                throw parseError(token.loc,'Unexpected token');
-            }
-        }
-
-        else if (state == ParseState.Page) {
-            if (!page) throw parseError(token.loc,'<INVALID STATE>');
-            if (token.val == '}') {
-                state = ParseState.Namespace;
-                page = null;
-            }
-            else if (token.isIdentifier()) {
-                if (tokens[i+1].val != '=') {
-                    throw parseError(tokens[i+1].loc,'Expected `=`');
-                }
-                const name = token.val;
-                const value = resolveValue(tokens[i+2]);
-                page.props[name] = value;
-                i += 2;
-            }
-            else if (token.val == '@') {
-                i++;
-                if (!tokens[i].isString()) {
-                    throw parseError(tokens[i].loc,'Expected a string for page path');
-                }
-                page.path = tokens[i].val.slice(1,-1);
-            }
-            else if (token.isNamespace()) {
-                throw parseError(token.loc,'Unexpected namespace declaration');
-            }
-            else if (token.isPage()) {
-                throw parseError(token.loc,'Unexpected page declaration');
-            }
-            else {
-                throw parseError(token.loc,'Unexpected token');
-            }
-        }
-    }
-
-    return new Pages(namespaces);
 }
 
 export const builtinLib : Lib = {

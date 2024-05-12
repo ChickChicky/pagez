@@ -17,16 +17,16 @@ Allows to declare pages and add a bit of post-processing to them.
 
 *(index.js)*
 ```js
-const pagez = require('pagez');
+const { Pages, builtinLib } = require('pagez');
 
-const pages = pagez.parse(pagez.Source.fromFile('./pages.np'));
-
-pages.use(pagez.builtinLib);
-
-pages.build({
-    sourcePath: 'source',
-    outputPath: 'dist'
-});
+const pages = new Pages()
+    .addFile('pages.np')
+    .use(builtinLib)
+    .build({
+        sourcePath: 'public',
+        outputPath: 'dist'
+    })
+;
 ```
 
 The above example would parse the pages file, store and minify the HTML and JS files from `source` in a dedicated `dist` folder.
@@ -35,17 +35,17 @@ We can also plug it into an HTTP server, which would look like this:
 
 *(index.js)*
 ```js
-const pagez = require('pagez');
+const { Pages, builtinLib } = require('pagez');
 const http = require('node:http');
 
-const pages = pagez.parse(pagez.Source.fromFile('./pages.np'));
-
-pages.build({
-    decorators: {...pagez.builtinDecorators},
-    macros: {...pagez.builtinMacros},
-    sourcePath: 'source',
-    outputPath: 'dist'
-});
+const pages = new Pages()
+    .addFile('pages.np')
+    .use(builtinLib)
+    .build({
+        sourcePath: 'public',
+        outputPath: 'dist'
+    })
+;
 
 const server = http.createServer(
     ( req, res ) => {
