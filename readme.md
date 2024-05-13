@@ -1,6 +1,4 @@
-# Pagez
-
-[![CI](https://github.com/ChickChicky/pagez/actions/workflows/ci.yml/badge.svg)](https://github.com/ChickChicky/pagez/actions/workflows/ci.yml)
+# Pagez [![CI](https://github.com/ChickChicky/pagez/actions/workflows/ci.yml/badge.svg)](https://github.com/ChickChicky/pagez/actions/workflows/ci.yml)
 
 Allows to declare pages and add a bit of post-processing to them.
 
