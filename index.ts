@@ -131,7 +131,7 @@ export class Pages {
     /**
      * Parses and adds a page declaration
      */
-    public add( source: Source ) : this {
+    public add( source: Source, props?: Props ) : this {
         const tokens: Token[] = tokenize(source);
     
         let state: ParseState = ParseState.Top;
@@ -161,7 +161,7 @@ export class Pages {
                         name,
                         loc: token.loc,
                         pages: [],
-                        props: {}
+                        props: {...props} || {}
                     };
                     this.namespaces.push(namespace);
                 } 
@@ -319,15 +319,15 @@ export class Pages {
     /**
      * Adds a page declaration from a file
      */
-    public addFile( path: string ) : this {
-        return this.add(Source.fromFile(path));
+    public addFile( path: string, props?: Props ) : this {
+        return this.add(Source.fromFile(path),props);
     }
 
     /**
      * Adds a page declaration from a string input
      */
-    public addText( text: string, name?: string ) : this {
-        return this.add(new Source(name||'(input)',text));
+    public addText( text: string, name?: string, props?: Props ) : this {
+        return this.add(new Source(name||'(input)',text),props);
     }
     
     /**
