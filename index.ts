@@ -32,9 +32,8 @@ type DecImpl = (page:Page,dec:Dec) => void;
 type MacImpl = (page:Page,dec:Dec) => Dec[];
 
 type BuildParams = {
-    paths?: {[namespace:string]: string},
-    sourcePath: string,
-    defaultPath?: string,
+    sourcePaths?: {[namespace:string]: string},
+    defaultSource?: string,
     outputPath?: string,
 };
 
@@ -389,7 +388,10 @@ export class Pages {
                 for (const page of namespace.pages) {
                     if (!page.path)
                         throw buildError(page.loc,`Missing path of the page`);
-                    const p = path.join(params.sourcePath+((params.paths||{})[namespace.name]||params.defaultPath||''),page.path);
+                    const proot = namespace.props.source||(params.sourcePaths&&params.sourcePaths[namespace.name])||params.defaultSource;
+                    if (!proot)
+                        throw buildError(namespace.loc,`Missing source directory for \`${page.name}\``);
+                    const p = path.join(proot,page.path);
                     if (!fs.existsSync(p))
                         throw buildError(page.loc,`File \`${p}\` could not be found`);
                     let body = fs.readFileSync(p,'utf-8');

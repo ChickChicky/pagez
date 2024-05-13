@@ -2,6 +2,8 @@
 
 Allows to declare pages and add a bit of post-processing to them.
 
+![](doc/pages.np.png)
+
 # Usage
 
 *(pages.np)*
@@ -23,7 +25,7 @@ const pages = new Pages()
     .addFile('pages.np')
     .use(builtinLib)
     .build({
-        sourcePath: 'public',
+        defaultSource: 'public',
         outputPath: 'dist'
     })
 ;
@@ -42,7 +44,7 @@ const pages = new Pages()
     .addFile('pages.np')
     .use(builtinLib)
     .build({
-        sourcePath: 'public',
+        defaultSource: 'public',
         outputPath: 'dist'
     })
 ;
