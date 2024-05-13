@@ -32,14 +32,18 @@ type DecImpl = (page:Page,dec:Dec) => void;
 type MacImpl = (page:Page,dec:Dec) => Dec[];
 
 type BuildParams = {
-    sourcePaths?: {[namespace:string]: string},
-    defaultSource?: string,
-    outputPath?: string,
+    sourcePaths?: {[namespace:string]: string};
+    defaultSource?: string;
+
+    sourceRoot?: {[namespace:string]: string};
+    globalRoot?: string;
+    
+    outputPath?: string;
 };
 
 type Lib = {
-    decorators?: {[name:string]: DecImpl},
-    macros?: {[name:string]: MacImpl}
+    decorators?: {[name:string]: DecImpl};
+    macros?: {[name:string]: MacImpl};
 };
 
 enum ParseState {
@@ -388,10 +392,10 @@ export class Pages {
                 for (const page of namespace.pages) {
                     if (!page.path)
                         throw buildError(page.loc,`Missing path of the page`);
-                    const proot = namespace.props.source||(params.sourcePaths&&params.sourcePaths[namespace.name])||params.defaultSource;
+                    const proot = namespace.props.source||((params.sourcePaths||{})[namespace.name])||params.defaultSource;
                     if (!proot)
                         throw buildError(namespace.loc,`Missing source directory for \`${page.name}\``);
-                    const p = path.join(proot,page.path);
+                    const p = path.join((params.sourceRoot||{})[namespace.name]||params.globalRoot||'',proot,page.path);
                     if (!fs.existsSync(p))
                         throw buildError(page.loc,`File \`${p}\` could not be found`);
                     let body = fs.readFileSync(p,'utf-8');
