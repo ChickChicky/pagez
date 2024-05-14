@@ -1,12 +1,12 @@
 {
     "name": "pagez",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "description": "A library to manage static HTTP pages",
     "repository": "https://github.com/ChickChicky/pagez/",
     "main": "index.js",
     "scripts": {
         "build": "npx tsc",
-        "test": "npm build"
+        "test": "npm run build"
     },
     "devDependencies": {
         "@types/html-minifier": "^4.0.5",
