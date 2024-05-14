@@ -1,6 +1,6 @@
 {
     "name": "pagez",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "description": "A library to manage static HTTP pages",
     "repository": "https://github.com/ChickChicky/pagez/",
     "main": "index.js",
